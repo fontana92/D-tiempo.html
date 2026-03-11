@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-TIEMPO | Libertad de espera</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #0a0a0a; --accent: #c9a86a; --text: #ffffff; }
+        body { font-family: 'Montserrat', sans-serif; background: var(--bg); color: var(--text); text-align: center; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+        .logo { font-weight: 900; letter-spacing: 5px; color: var(--accent); margin-bottom: 40px; }
+        .card { background: #1a1a1a; padding: 40px; border-radius: 30px; border: 1px solid #333; width: 100%; max-width: 320px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        h2 { font-size: 0.9rem; text-transform: uppercase; color: #888; margin-bottom: 10px; }
+        .number { font-size: 8rem; font-weight: 900; color: var(--accent); margin: 0; line-height: 1; }
+        .info { margin-top: 20px; font-size: 1.1rem; opacity: 0.8; }
+        input { background: #222; border: 1px solid #444; color: white; padding: 15px; border-radius: 10px; width: 80%; margin-bottom: 20px; font-size: 1rem; text-align: center; }
+        button { background: var(--accent); color: black; border: none; padding: 15px 30px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 1rem; transition: 0.3s; }
+        button:hover { transform: scale(1.05); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="logo">D-TIEMPO</div>
+
+    <!-- PANTALLA 1: REGISTRO -->
+    <div id="registration" class="card">
+        <h2>Entrar a la fila</h2>
+        <input type="text" id="clientName" placeholder="Tu nombre...">
+        <button onclick="joinQueue()">OBTENER LUGAR</button>
+    </div>
+
+    <!-- PANTALLA 2: TU LUGAR -->
+    <div id="queueStatus" class="card hidden">
+        <h2 id="statusTitle">Tu lugar actual:</h2>
+        <p class="number" id="position">#--</p>
+        <p class="info" id="waitingMsg">Faltan 0 personas</p>
+        <p style="font-size: 0.8rem; color: #555; margin-top: 20px;">Te avisaremos por aquí cuando sea tu turno.</p>
+    </div>
+
+    <script>
+        // CONEXIÓN CON SUPABASE
+        const SUPABASE_URL = ttps://rbxfnjvavvlttqansdvh.supabase.co;
+        const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieGZuanZhdnZsdHRxYW5zZHZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDE2NTMsImV4cCI6MjA4ODgxNzY1M30.a-XFDFCPu3vpQGx_xfIHYdurNPJNVkNZylrzaIcHv84;
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let myTurnId = null;
+
+        async function joinQueue() {
+            const name = document.getElementById('clientName').value;
+            if(!name) return alert("Poné tu nombre");
+
+            const { data, error } = await supabase
+                .from('fila_virtual')
+                .insert([{ nombre_cliente: name, sucursal_id: 'S1' }])
+                .select();
+
+            if (data) {
+                myTurnId = data[0].id;
+                showStatus();
+                updatePosition();
+            }
+        }
+
+        async function updatePosition() {
+            // Buscamos cuánta gente hay antes que yo que esté "esperando"
+            const { data } = await supabase
+                .from('fila_virtual')
+                .select('id')
+                .eq('estado', 'esperando')
+                .order('created_at', { ascending: true });
+
+            const index = data.findIndex(item => item.id === myTurnId);
+            const position = index + 1;
+
+            if (position === 0) {
+                document.getElementById('position').innerText = "✓";
+                document.getElementById('statusTitle').innerText = "¡Es tu turno!";
+                document.getElementById('waitingMsg').innerText = "Entrá ahora mismo.";
+                alert("¡ES TU TURNO! Entrá al local.");
+            } else {
+                document.getElementById('position').innerText = "#" + position;
+                document.getElementById('waitingMsg').innerText = `Faltan ${index} personas`;
+            }
+        }
+
+        function showStatus() {
+            document.getElementById('registration').classList.add('hidden');
+            document.getElementById('queueStatus').classList.remove('hidden');
+        }
+
+        // SUSCRIPCIÓN EN TIEMPO REAL
+        supabase
+            .channel('cambios_fila')
+            .on('postgres_changes', { event: '*', table: 'fila_virtual' }, (payload) => {
+                if(myTurnId) updatePosition();
+            })
+            .subscribe();
+
+    </script>
+</body>
+</html>

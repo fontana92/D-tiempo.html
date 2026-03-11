@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-TIEMPO | Panel de Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Montserrat', sans-serif; background: #0a0a0a; color: white; padding: 20px; }
+        h1 { color: #c9a86a; border-bottom: 2px solid #c9a86a; padding-bottom: 10px; }
+        .client-card { background: #1a1a1a; padding: 20px; border-radius: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
+        .client-info h3 { margin: 0; font-size: 1.2rem; }
+        .client-info p { margin: 5px 0 0; color: #888; font-size: 0.9rem; }
+        button { background: #c9a86a; color: black; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+        button:hover { background: #fff; }
+        .empty { text-align: center; color: #555; margin-top: 50px; }
+    </style>
+</head>
+<body>
+
+    <h1>D-TIEMPO: Panel de Control</h1>
+    <div id="list">
+        <p class="empty">Cargando fila en tiempo real...</p>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "TU_PROJECT_URL_AQUI";
+        const SUPABASE_KEY = "TU_ANON_KEY_AQUI";
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function loadQueue() {
+            const { data } = await supabase
+                .from('fila_virtual')
+                .select('*')
+                .eq('estado', 'esperando')
+                .order('created_at', { ascending: true });
+
+            const listDiv = document.getElementById('list');
+            if(data.length === 0) {
+                listDiv.innerHTML = '<p class="empty">No hay nadie en la fila.</p>';
+                return;
+            }
+
+            listDiv.innerHTML = data.map((cliente, index) => `
+                <div class="client-card">
+                    <div class="client-info">
+                        <h3>${cliente.nombre_cliente}</h3>
+                        <p>Llegó hace: ${Math.floor((new Date() - new Date(cliente.created_at))/60000)} min</p>
+                    </div>
+                    <button onclick="atender('${cliente.id}')">
+                        ${index === 0 ? '🔔 LLAMAR AHORA' : 'ATENDER'}
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function atender(id) {
+            await supabase
+                .from('fila_virtual')
+                .update({ estado: 'atendido' })
+                .eq('id', id);
+            
+            // La lista se actualizará sola por el Realtime
+        }
+
+        // TIEMPO REAL: Si alguien se anota desde el celu, el barbero lo ve al instante
+        supabase
+            .channel('cambios_admin')
+            .on('postgres_changes', { event: '*', table: 'fila_virtual' }, () => {
+                loadQueue();
+            })
+            .subscribe();
+
+        loadQueue();
+    </script>
+</body>
+</html>
